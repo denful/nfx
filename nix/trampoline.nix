@@ -4,6 +4,7 @@ let
   inherit (api.types) fn any fxImmediate;
 
   isAdapt = e: e._tag or null == "adapt";
+  isBind = e: e._tag or null == "bind";
 
   # One iteration for an adapt node — returns next Fx without recursing into adapt chain.
   # Three sub-cases:
@@ -40,6 +41,14 @@ let
         cmap = newCmap;
         fmap = newFmap;
       }
+    else if isBind inner then
+      # Outer adapt wraps a bind node: inject cmap into bind.e, append fmap as final queue step.
+      # bind.e runs with cmap-transformed context; queue continuations thread state; fmap closes.
+      let
+        newE = { _type = "nfx"; _tag = "adapt"; e = inner.e; cmap = cmap; fmap = _t: s: v: nfx.immediate s v; };
+        tailCont = s: v: { _type = "nfx"; _tag = "adapt"; e = nfx.immediate s v; cmap = cmap; fmap = fmap; };
+      in
+      { _type = "nfx"; _tag = "bind"; e = newE; queue = nfx.ftcq.snoc inner.queue tailCont; }
     else
       {
         _type = "nfx";
@@ -48,6 +57,31 @@ let
         cmap = cmap;
         fmap = fmap;
       };
+
+  # One iteration for a bind node — O(1) amortized via FTCQueue viewl.
+  # When e is immediate: pop head continuation, apply (state, value), continue with tail.
+  # When e is bind: flatten nested bind by concatenating queues (O(1) node).
+  # Otherwise: advance e one step, keep queue.
+  stepBind =
+    eb:
+    let
+      e = eb.e;
+      queue = eb.queue;
+    in
+    if fxImmediate.check e then
+      let
+        step = nfx.ftcq.viewl queue;
+        next = step.head e.state e.value;
+      in
+      if step.tail == null then next
+      else { _type = "nfx"; _tag = "bind"; e = next; queue = step.tail; }
+    else if isBind e then
+      # Flatten: bind(bind(e0, q0), q1) → bind(e0, node(q0, q1)) — O(1)
+      { _type = "nfx"; _tag = "bind"; e = e.e; queue = nfx.ftcq.node e.queue queue; }
+    else if isAdapt e then
+      { _type = "nfx"; _tag = "bind"; e = stepAdapt e; queue = queue; }
+    else
+      { _type = "nfx"; _tag = "bind"; e = e.ability { }; queue = queue; };
 
   # Fast path: direct recursion bounded at 500. Falls to runFxSlow beyond.
   runFxFast =
@@ -58,6 +92,8 @@ let
       runFxSlow e
     else if isAdapt e then
       runFxFast (stepAdapt e) (depth + 1)
+    else if isBind e then
+      runFxFast (stepBind e) (depth + 1)
     else
       runFxFast (e.ability { }) (depth + 1);
 
@@ -78,7 +114,10 @@ let
             [ ]
           else
             let
-              next = if isAdapt curr then stepAdapt curr else curr.ability { };
+              next =
+                if isAdapt curr then stepAdapt curr
+                else if isBind curr then stepBind curr
+                else curr.ability { };
             in
             [ { key = builtins.seq next (k + 1); _e = next; } ];
       };
@@ -88,13 +127,13 @@ let
   runFx = e: runFxFast e 0;
 in
 mk {
-  doc = "runFx: trampolined interpreter — fast path (≤500) + genericClosure slow path. Handles immediate/pending/adapt.";
+  doc = "runFx: trampolined interpreter — fast (≤500) + genericClosure slow paths. Handles immediate/pending/adapt/bind.";
   value = {
     runFx = mk {
       doc = ''
         Trampolined `runFx`. Fast path recurses ≤500 steps; genericClosure beyond.
-        Handles all Fx variants: immediate (base), pending (ability), adapt (iterative peel).
-        O(1) Nix stack depth for arbitrarily deep computations including deep `do`/`mapM` chains.
+        Handles all Fx variants: immediate, pending, adapt (iterative peel), bind (FTCQueue).
+        O(1) Nix stack depth. `do`/`mapM` chains run in O(N) with O(1) per step.
         `Fx<{}, V> -> V`
       '';
       type = fn any;
@@ -130,7 +169,7 @@ mk {
         runFx chain;
       expected = 42;
     };
-    # 600 sequential mapM steps — adapt-chain depth fix; would overflow old recursive runFx.
+    # 600 sequential mapM steps — FTCQueue O(1) bind; each step O(1) via stepBind.
     "runFx-deep-do" = {
       expr =
         let

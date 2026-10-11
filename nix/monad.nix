@@ -44,10 +44,16 @@ mk {
       type = fn (fn fx);
       value =
         f: e:
-        nfx.adapt e (s: s) (
-          _t: s: v:
-          nfx.contraMap (_: s) (_outer: s2: s2) (f v)
-        );
+        let
+          # Continuation: run (f value) with current state as context, keep output state.
+          # Equivalent to: contraMap (_: s) (_: s2: s2) (f v)
+          cont = s: v: nfx.adapt (f v) (_: s) (_o: i: u: nfx.immediate i u);
+        in
+        if e ? _tag && e._tag == "bind" then
+          # Snoc onto existing FTCQueue — O(1) vs building deeper adapt nesting
+          { _type = "nfx"; _tag = "bind"; e = e.e; queue = nfx.ftcq.snoc e.queue cont; }
+        else
+          { _type = "nfx"; _tag = "bind"; e = e; queue = nfx.ftcq.leaf cont; };
       tests = {
         "mapM sequences effects" = {
           expr = nfx.runFx (nfx.mapM (x: nfx.pure (x * 2)) (nfx.pure 21));

@@ -16,6 +16,10 @@ let
 
   namespacedFiles = [
     {
+      name = "ftcq";
+      path = ./ftcq.nix;
+    }
+    {
       name = "state";
       path = ./state.nix;
     }
@@ -235,6 +239,10 @@ in
         ./trampoline.nix
       ];
       namespacedFiles = [
+        {
+          name = "ftcq";
+          path = ./ftcq.nix;
+        }
         {
           name = "state";
           path = ./state.nix;
