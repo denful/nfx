@@ -18,6 +18,10 @@ let
 
   namespacedFiles = [
     {
+      name = "ftcq";
+      path = ./ftcq.nix;
+    }
+    {
       name = "state";
       path = ./state.nix;
     }

@@ -40,10 +40,22 @@ let
       && v ? fmap;
   };
 
+  fxBind = lib.types.mkOptionType {
+    name = "fxBind";
+    description = "NFX bind effect node (FTCQueue continuation chain)";
+    check =
+      v:
+      builtins.isAttrs v
+      && v._type or null == "nfx"
+      && v._tag or null == "bind"
+      && v ? e
+      && v ? queue;
+  };
+
   fx = lib.types.mkOptionType {
     name = "fx";
-    description = "NFX effect (immediate, pending, or adapt)";
-    check = v: fxImmediate.check v || fxPending.check v || fxAdapt.check v;
+    description = "NFX effect (immediate, pending, adapt, or bind)";
+    check = v: fxImmediate.check v || fxPending.check v || fxAdapt.check v || fxBind.check v;
   };
 
   extractValue =
@@ -77,6 +89,7 @@ in
       fxImmediate
       fxPending
       fxAdapt
+      fxBind
       fx
       ;
   };
