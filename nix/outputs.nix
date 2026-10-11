@@ -11,6 +11,7 @@ let
     ./monad.nix
     ./provide.nix
     ./sequence.nix
+    ./trampoline.nix
   ];
 
   namespacedFiles = [
@@ -83,6 +84,10 @@ let
     {
       name = "bracket";
       path = ./bracket.nix;
+    }
+    {
+      name = "trampoline";
+      path = ./trampoline.nix;
     }
   ];
 
@@ -227,6 +232,7 @@ in
         ./monad.nix
         ./provide.nix
         ./sequence.nix
+        ./trampoline.nix
       ];
       namespacedFiles = [
         {
@@ -298,6 +304,10 @@ in
         {
           name = "bracket";
           path = ./bracket.nix;
+        }
+        {
+          name = "trampoline";
+          path = ./trampoline.nix;
         }
       ];
 
