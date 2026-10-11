@@ -27,10 +27,23 @@ let
       && builtins.isFunction v.ability;
   };
 
+  fxAdapt = lib.types.mkOptionType {
+    name = "fxAdapt";
+    description = "NFX adapt effect node";
+    check =
+      v:
+      builtins.isAttrs v
+      && v._type or null == "nfx"
+      && v._tag or null == "adapt"
+      && v ? e
+      && v ? cmap
+      && v ? fmap;
+  };
+
   fx = lib.types.mkOptionType {
     name = "fx";
-    description = "NFX effect (immediate or pending)";
-    check = v: fxImmediate.check v || fxPending.check v;
+    description = "NFX effect (immediate, pending, or adapt)";
+    check = v: fxImmediate.check v || fxPending.check v || fxAdapt.check v;
   };
 
   extractValue =
@@ -63,6 +76,7 @@ in
       any
       fxImmediate
       fxPending
+      fxAdapt
       fx
       ;
   };

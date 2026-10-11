@@ -3,7 +3,6 @@ let
   inherit (api) mk;
   inherit (api.types)
     fn
-    any
     fx
     fxImmediate
     fxPending
@@ -109,61 +108,6 @@ mk {
       };
     };
 
-    runFx = mk {
-      doc = ''
-        Evaluates an effect to extract its final value.
-
-        This is the interpreter that runs an effect computation. It only works
-        when all context requirements have been satisfied (state is unit/empty).
-        The function loops until reaching an immediate result, feeding empty
-        context `{}` to any pending abilities.
-
-        ## Type Signature
-        `Fx<{}, V> -> V`
-
-        ## Parameters
-        - `e`: An effect with no remaining context requirements
-
-        ## Returns
-        The final computed value
-
-        ## Example
-        ```nix
-        runFx (pure 42)  # => 42
-        runFx (provide 10 (pending (n: immediate n (n * 2))))  # => 20
-        ```
-
-        ## Notes
-        Before calling runFx, all context requirements must be satisfied using
-        `provide` or similar combinators. Calling runFx on an effect that still
-        has requirements will fail when the ability tries to access missing context.
-
-        ## See Also
-        - `provide` - Satisfies context requirements before evaluation
-        - `pure` - Creates an effect ready for immediate evaluation
-      '';
-      type = fn any;
-      value = e: if api.types.fxImmediate.check e then e.value else nfx.runFx (e.ability { });
-      tests = {
-        "type check" = {
-          expr = api.types.fn.check nfx.runFx;
-          expected = true;
-        };
-        "runFx immediate returns value" = {
-          expr = nfx.runFx (nfx.immediate { } 42);
-          expected = 42;
-        };
-        "runFx pending calls ability then returns" = {
-          expr = nfx.runFx (nfx.pending (_: nfx.immediate { } 99));
-          expected = 99;
-        };
-        "runFx nested pending" = {
-          expr = nfx.runFx (nfx.pending (_: nfx.pending (_: nfx.immediate { } 7)));
-          expected = 7;
-        };
-      };
-    };
-
     adapt = mk {
       doc = ''
         The fundamental combinator - everything else builds on this.
@@ -182,10 +126,9 @@ mk {
         - `fmap`: Continuation `(T, S, V) -> Fx<T,U>` - transforms the result
 
         ## How It Works
-        1. Creates a pending effect expecting context T
-        2. Applies `cmap` to get the inner context S
-        3. If effect is immediate, applies `fmap` to produce final result
-        4. If effect is pending, recursively adapts the continuation
+        Creates an adapt node `{ _tag="adapt", e, cmap, fmap }` — a pure data
+        structure. The interpreter (`runFx`) peels adapt nodes iteratively,
+        eliminating the O(N) stack growth that a recursive closure would cause.
 
         ## Example
         ```nix
@@ -198,15 +141,11 @@ mk {
         - `contraMap` - Simpler context transformation (built on adapt)
       '';
       type = fn (fn (fn fx));
-      value =
-        e: cmap: fmap:
-        nfx.pending (
-          t:
-          let
-            s = cmap t;
-          in
-          if api.types.fxImmediate.check e then fmap t e.state e.value else nfx.adapt (e.ability s) cmap fmap
-        );
+      value = e: cmap: fmap: {
+        _type = "nfx";
+        _tag = "adapt";
+        inherit e cmap fmap;
+      };
       tests = {
         "type check" = {
           expr = api.types.fn.check nfx.adapt;
